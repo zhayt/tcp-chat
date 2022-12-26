@@ -1,2 +1,2 @@
-# tcp-chat
-tcp chat on Golang
+# net-cat
+TCP chat on golang
