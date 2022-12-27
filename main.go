@@ -83,11 +83,11 @@ func handleConnection(c net.Conn) {
 	}
 	go msgSwitch()
 	reader := bufio.NewScanner(c)
-	c.Write([]byte(fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), userName)))
+	c.Write([]byte(template(userName)))
 	for reader.Scan() {
-		c.Write([]byte(fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), userName)))
+		c.Write([]byte(template(userName)))
 		if !newMsg.Add(strings.TrimSpace(reader.Text()), c).Check() {
-			prefix := fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), userName)
+			prefix := fmt.Sprintf(template(userName))
 			messages <- *newMsg.Add(prefix+strings.TrimSpace(reader.Text()), c)
 		}
 	}
@@ -96,6 +96,9 @@ func handleConnection(c net.Conn) {
 
 	leaving <- *newMsg.Add(" has left our chat...", c)
 	c.Close()
+}
+func template(n string) string {
+	return fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), n)
 }
 
 func nameChecker(name string) bool {
