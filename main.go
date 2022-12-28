@@ -46,7 +46,12 @@ func (t message) Check() bool {
 
 func loger(s string, file os.File) {
 	str := fmt.Sprintf("[%s]%s\n", time.Now().Format("01-02-2022 15:04:05"), s)
-	file.Write([]byte(str))
+	mu.Lock()
+	defer mu.Unlock()
+	_, err := file.WriteString(str)
+	if err != nil {
+		fmt.Print(fmt.Sprintf("[%s][COULDN'T WRITE TO FILE][ERROR:%s\n]", time.Now().Format("01-02-2022 15:04:05"), err))
+	}
 	fmt.Print(str)
 }
 
@@ -71,7 +76,14 @@ func main() {
 	f1, err := os.Create("history.txt")
 	f2, err := os.Create("log.txt")
 	loger(fmt.Sprintf("[SERVER WAS STARTED][PORT%v]", PORT), *f2)
-	defer f1.Close()
+	defer func() {
+		if err := f1.Close(); err != nil {
+			loger("[COULDN'T CLOSE FILE history.txt][ADDRESS:main]", *f2)
+		}
+		if err := f2.Close(); err != nil {
+			loger("[COULDN'T CLOSE FILE log.txt][ADDRESS:main]", *f2)
+		}
+	}()
 	defer f2.Close()
 	for {
 		c, err := l.Accept()
@@ -90,14 +102,14 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 	c.Write([]byte("Welcome to the TCP chat!\n"))
 	logo, err := os.ReadFile("logo.txt")
 	if err != nil {
-		loger(fmt.Sprintf("[COUDN'T OPEN FILE <logo.txt>][ADDRESS:%v]"), fileLog)
+		loger(fmt.Sprintf("[COULDN'T OPEN FILE <logo.txt>][ADDRESS:%v]"), fileLog)
 		c.Write([]byte("Nefig bylo ydolyt' logo.txt!!!\nPinguine\n"))
 	}
 	c.Write(logo)
 	var userName string
 	newMsg := message{}
 	for {
-		c.Write([]byte("[ENTER YOUR NAME]: "))
+		c.Write([]byte("[ENTER YOUR NAME]:"))
 		input, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			loger(fmt.Sprintf("[THE USER LOGGED OUT WITHOUT ENTERING A NAME][ADDRESS:%v][ERROR:%v]", c.RemoteAddr().String(), err), fileLog)
@@ -110,34 +122,23 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 		}
 
 		mu.Lock()
-		//if _, ok := clients[userName]; ok {
-		//	c.Write([]byte("Name already has! Please try again.\n"))
-		//	continue
-		//}
-		//if len(clients) > 9 {
-		//	c.Write([]byte("Sever already full! Please try later.\n"))
-		//	continue
-		//}
 		clients[userName] = c
 		mu.Unlock()
 		loger(fmt.Sprintf("[CLIENT JOIN IN THE CHAT][USER NAME:%v][ADDRESS:%v]", userName, c.RemoteAddr().String()), fileLog)
 		break
 	}
 	//messages <- *newMsg.Add(userName+"has joined our chat...", c)
+	mu.Lock()
 	history, err := os.ReadFile(fileHistory.Name())
+	mu.Unlock()
 	if err != nil {
-		loger(fmt.Sprintf("[COUDN'T READ HISTORY FILE][ADDRESS:%v][ERROR:%s]", c.RemoteAddr().String(), err.Error()), fileLog)
+		loger(fmt.Sprintf("[COULDN'T READ HISTORY FILE][ADDRESS:%v][ERROR:%s]", c.RemoteAddr().String(), err.Error()), fileLog)
 	}
 	c.Write(history)
+
 	go msgSwitch()
 
-	//go func() {
-	//	messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 100000000), c)
-	//}()
-	//newStruct := message{text: "\r" + userName + " has joined our chat..." + strings.Repeat(" ", 10), address: c.RemoteAddr().String()}
-	//messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 10), c)
-	newStruct := *newMsg.Add("\r"+strings.Repeat(" ", 100)+"\r"+userName+" has joined our chat...", c)
-	messages <- newStruct
+	messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 100), c)
 	reader := bufio.NewScanner(c)
 	c.Write([]byte(template(userName)))
 
@@ -145,7 +146,9 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 		c.Write([]byte(template(userName)))
 		if !newMsg.Add(strings.TrimSpace(reader.Text()), c).Check() {
 			netDate := *newMsg.Add(template(userName)+strings.TrimSpace(reader.Text()), c)
+			mu.Lock()
 			fileHistory.Write([]byte(netDate.text + "\n"))
+			mu.Unlock()
 			messages <- netDate
 		}
 	}
@@ -164,7 +167,7 @@ func template(n string) string {
 
 func nameChecker(str string) (string, error) {
 	userName := strings.TrimSuffix(strings.TrimSpace(str), "\n")
-	if len(userName) < 4 || len(userName) > 12 {
+	if len(userName) < 3 || len(userName) > 12 {
 		return "", errors.New("Bad name! Len name must be more 2 and less 12 symbols\n")
 	}
 	for _, v := range userName {
