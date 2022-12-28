@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -97,25 +98,26 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 	newMsg := message{}
 	for {
 		c.Write([]byte("[ENTER YOUR NAME]: "))
-		name, err := bufio.NewReader(c).ReadString('\n')
+		input, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			loger(fmt.Sprintf("[THE USER LOGGED OUT WITHOUT ENTERING A NAME][ADDRESS:%v][ERROR:%v]", c.RemoteAddr().String(), err), fileLog)
 			break
 		}
-		if !nameChecker(name) {
-			c.Write([]byte("Bad name! Len name must be more 2 and less 12 symbols, and only symbol from latin!"))
+		userName, err = nameChecker(input)
+		if err != nil {
+			c.Write([]byte(err.Error()))
 			continue
 		}
-		userName = strings.TrimSuffix(name, "\n")
+
 		mu.Lock()
-		if _, ok := clients[userName]; ok {
-			c.Write([]byte("Name already has! Please try again.\n"))
-			continue
-		}
-		if len(clients) > 9 {
-			c.Write([]byte("Sever already full! Please try later.\n"))
-			continue
-		}
+		//if _, ok := clients[userName]; ok {
+		//	c.Write([]byte("Name already has! Please try again.\n"))
+		//	continue
+		//}
+		//if len(clients) > 9 {
+		//	c.Write([]byte("Sever already full! Please try later.\n"))
+		//	continue
+		//}
 		clients[userName] = c
 		mu.Unlock()
 		loger(fmt.Sprintf("[CLIENT JOIN IN THE CHAT][USER NAME:%v][ADDRESS:%v]", userName, c.RemoteAddr().String()), fileLog)
@@ -132,8 +134,10 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 	//go func() {
 	//	messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 100000000), c)
 	//}()
-	//messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 100000000), c)
-
+	//newStruct := message{text: "\r" + userName + " has joined our chat..." + strings.Repeat(" ", 10), address: c.RemoteAddr().String()}
+	//messages <- *newMsg.Add("\r"+userName+" has joined our chat..."+strings.Repeat(" ", 10), c)
+	newStruct := *newMsg.Add("\r"+strings.Repeat(" ", 100)+"\r"+userName+" has joined our chat...", c)
+	messages <- newStruct
 	reader := bufio.NewScanner(c)
 	c.Write([]byte(template(userName)))
 
@@ -150,24 +154,34 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 	mu.Lock()
 	delete(clients, userName)
 	mu.Unlock()
-	leaving <- *newMsg.Add(" has left our chat...", c)
+	leaving <- *newMsg.Add("\n"+userName+" has left our chat...", c)
 	c.Close()
 }
+
 func template(n string) string {
 	return fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), n)
 }
 
-func nameChecker(name string) bool {
-	if len(name) < 4 || len(name) > 12 {
-		return false
+func nameChecker(str string) (string, error) {
+	userName := strings.TrimSuffix(strings.TrimSpace(str), "\n")
+	if len(userName) < 4 || len(userName) > 12 {
+		return "", errors.New("Bad name! Len name must be more 2 and less 12 symbols\n")
 	}
-	for _, v := range name {
-		if v >= 'A' && v <= 'Z' || v >= 'a' && v <= 'z' || v == '\n' {
+	for _, v := range userName {
+		if v >= 'A' && v <= 'Z' || v >= 'a' && v <= 'z' {
 			continue
 		}
-		return false
+		return "", errors.New("Bad name! Name must has only latin alphabet\n")
 	}
-	return true
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := clients[userName]; ok {
+		return "", errors.New("Name already has! Please try again.\n")
+	}
+	if len(clients) > 9 {
+		return "", errors.New("Sever already full! Please try to connect later.\n")
+	}
+	return userName, nil
 }
 
 func msgSwitch() {
@@ -186,8 +200,9 @@ func msgSwitch() {
 			mu.Unlock()
 		case msg := <-leaving:
 			mu.Lock()
-			for _, c := range clients {
+			for name, c := range clients {
 				c.Write([]byte(msg.text + "\n"))
+				c.Write([]byte(template(name)))
 			}
 			mu.Unlock()
 		}
