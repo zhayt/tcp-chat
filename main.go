@@ -45,12 +45,12 @@ func (t message) Check() bool {
 }
 
 func loger(s string, file os.File) {
-	str := fmt.Sprintf("[%s]%s\n", time.Now().Format("01-02-2022 15:04:05"), s)
+	str := fmt.Sprintf("[%s]%s\n", time.Now().Format("01-02-2006 15:04:05"), s)
 	mu.Lock()
 	defer mu.Unlock()
 	_, err := file.WriteString(str)
 	if err != nil {
-		fmt.Print(fmt.Sprintf("[%s][COULDN'T WRITE TO FILE][ERROR:%s\n]", time.Now().Format("01-02-2022 15:04:05"), err))
+		fmt.Print(fmt.Sprintf("[%s][COULDN'T WRITE TO FILE][ERROR:%s\n]", time.Now().Format("01-02-2006 15:04:05"), err))
 	}
 	fmt.Print(str)
 }
@@ -84,7 +84,6 @@ func main() {
 			loger("[COULDN'T CLOSE FILE log.txt][ADDRESS:main]", *f2)
 		}
 	}()
-	defer f2.Close()
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -97,8 +96,6 @@ func main() {
 }
 
 func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
-	defer fileHistory.Close()
-	defer fileLog.Close()
 	c.Write([]byte("Welcome to the TCP chat!\n"))
 	logo, err := os.ReadFile("logo.txt")
 	if err != nil {
@@ -162,7 +159,7 @@ func handleConnection(c net.Conn, fileHistory, fileLog os.File) {
 }
 
 func template(n string) string {
-	return fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2022 15:04:05"), n)
+	return fmt.Sprintf("\r[%s][%s]:", time.Now().Format("01-02-2006 15:04:05"), n)
 }
 
 func nameChecker(str string) (string, error) {
